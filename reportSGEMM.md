@@ -1,18 +1,4 @@
-# SGEMM
-# tensor core
-
-***GEMM 优化的本质是用寄存器和共享内存（Shared Memory）挡住对全局内存（Global Memory）的访问。*** 
-
-参考资料：  
-https://docs.nvidia.com/cuda/cuda-programming-guide/contents.html  
-https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/nvidia-ampere-architecture-whitepaper.pdf  
-https://docs.nvidia.com/cuda/cuda-c-programming-guide/contents.html  
-https://forums.developer.nvidia.com/t/how-to-understand-the-bank-conflict-of-shared-mem/260900
-https://caomaolufei.github.io/AIInfraGuide/
-
-
-v?及之后版本的代码均为原创。
-严格根据NVIDIA GeForce RTX 4060 Laptop GPU进行适配开发
+# SGEMM（未完成）
 
 C = A @ B
 
@@ -22,13 +8,18 @@ $B \in \mathbb{R}^{K \times N}$
 
 $C \in \mathbb{R}^{M \times N}$
 
+***GEMM 优化的本质是用寄存器和共享内存（Shared Memory）挡住对全局内存（Global Memory）的访问。*** 
 
-NVIDIA GeForce RTX 4060 Laptop GPU
 
+v3及之后版本的代码均为原创  
+严格根据NVIDIA GeForce RTX 4060 Laptop GPU进行适配开发
+
+GDDR6显存 8GB
 L2缓存大小 24 MB  
 流式多处理器个数 24  
 每流式多处理器最大可驻留的Warp数 48  
 每流式多处理器最大可驻留线程数 1536  
+
 每流式多处理器寄存器文件大小 64 KB  
 每流式多处理器L1数据缓存/共享内存大小 128 KB  
 
@@ -811,5 +802,26 @@ block thread warp register tiling 原理、本质
 
 数据地址的对齐是硬件自动完成的吗？
 
+tensor core
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+参考资料：  
+https://docs.nvidia.com/cuda/cuda-programming-guide/contents.html  
+https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/nvidia-ampere-architecture-whitepaper.pdf  
+https://docs.nvidia.com/cuda/cuda-c-programming-guide/contents.html  
+https://forums.developer.nvidia.com/t/how-to-understand-the-bank-conflict-of-shared-mem/260900
+https://caomaolufei.github.io/AIInfraGuide/
+https://zhuanlan.zhihu.com/p/584236348

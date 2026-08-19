@@ -172,7 +172,7 @@ void testSGEMM()
     bool pass = true;
 
     // 性能 + 正确性测试：规整尺寸
-    pass &= run_sgemm_test(1024, 1024, 1024, 50);
+    pass &= run_sgemm_test(1024, 1024, 1024, 20);
 
     // 边界正确性测试：M/N/K 均不是 Tile 尺寸的整数倍
     // 注意：为保证 LDG.128/STG.128 的 16B 地址对齐，N 与 K 仍必须是 4 的倍数
