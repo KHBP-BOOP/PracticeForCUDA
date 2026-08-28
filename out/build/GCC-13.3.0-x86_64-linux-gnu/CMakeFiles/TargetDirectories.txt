@@ -1,4 +1,0 @@
-/home/khbp/codes/CUDAkernels/out/build/GCC-13.3.0-x86_64-linux-gnu/CMakeFiles/EXEFILE.dir
-/home/khbp/codes/CUDAkernels/out/build/GCC-13.3.0-x86_64-linux-gnu/CMakeFiles/profile.dir
-/home/khbp/codes/CUDAkernels/out/build/GCC-13.3.0-x86_64-linux-gnu/CMakeFiles/edit_cache.dir
-/home/khbp/codes/CUDAkernels/out/build/GCC-13.3.0-x86_64-linux-gnu/CMakeFiles/rebuild_cache.dir

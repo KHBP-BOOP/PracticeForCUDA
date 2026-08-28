@@ -24,6 +24,8 @@ string(APPEND CMAKE_CUDA_FLAGS " -lineinfo -Xptxas=-v")
 
 
 
+
+
 #生成可执行文件
 add_executable(EXEFILE
     src/Main.cpp
