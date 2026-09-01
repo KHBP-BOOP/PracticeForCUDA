@@ -81,9 +81,8 @@ constexpr double PEAK_TFLOPS = 15.0;
 
 // 运行一次完整的 SGEMM 测试：分配内存 → 随机初始化 → 核函数预热/计时 → 正确性校验
 // iterations > 0 时进行性能测试（预热 + 循环计时取平均），为 0 时仅校验正确性
-static bool run_sgemm_test(int M, int N, int K, int iterations)
-{
-    std::cout << "========================================" << std::endl;
+static bool run_sgemm_test(int M, int N, int K, int iterations) {
+
     std::cout << "测试规模    : M = " << M << ", N = " << N << ", K = " << K << std::endl;
 
     size_t a_bytes = static_cast<size_t>(M) * K * sizeof(float);
@@ -151,14 +150,14 @@ static bool run_sgemm_test(int M, int N, int K, int iterations)
     std::cout << "Grid 配置   : " << grid.x << " x " << grid.y << " Blocks, "
               << BLOCK_SIZE << " Threads/Block" << std::endl;
     std::cout << "结果验证    : " << (pass ? "通过 (PASS)" : "失败 (FAIL)") << std::endl;
-    if (iterations > 0) {
-        // FLOPs = 2*M*N*K（每个输出元素需 K 次乘加）
-        double tflops = 2.0 * M * N * K / (avg_milliseconds * 1e-3) / 1e12;
-        std::cout << "----------------------------------------" << std::endl;
-        std::cout << "平均计算耗时: " << avg_milliseconds << " ms" << std::endl;
-        std::cout << "计算性能    : " << tflops << " TFLOPS" << std::endl;
-        std::cout << "峰值利用率  : " << 100.0 * tflops / PEAK_TFLOPS << " %" << std::endl;
-    }
+    // if (iterations > 0) {
+    //     // FLOPs = 2*M*N*K（每个输出元素需 K 次乘加）
+    //     double tflops = 2.0 * M * N * K / (avg_milliseconds * 1e-3) / 1e12;
+    //     std::cout << "----------------------------------------" << std::endl;
+    //     std::cout << "平均计算耗时: " << avg_milliseconds << " ms" << std::endl;
+    //     std::cout << "计算性能    : " << tflops << " TFLOPS" << std::endl;
+    //     std::cout << "峰值利用率  : " << 100.0 * tflops / PEAK_TFLOPS << " %" << std::endl;
+    // }
 
     // 7. 释放资源
     CUDA_CHECK(cudaFree(d_A));
@@ -172,7 +171,7 @@ void testSGEMM()
     bool pass = true;
 
     // 性能 + 正确性测试：规整尺寸
-    pass &= run_sgemm_test(1024, 1024, 1024, 20);
+    pass &= run_sgemm_test(1024, 1024, 1024, 3);
 
     // 边界正确性测试：M/N/K 均不是 Tile 尺寸的整数倍
     // 注意：为保证 LDG.128/STG.128 的 16B 地址对齐，N 与 K 仍必须是 4 的倍数

@@ -781,6 +781,143 @@ B 2way bc
 
 
 
+template <int BM = 128, int BN = 128, int BK = 8,
+    int BLOCK_SIZE, int Wx, int Wy,
+    int TM, int TN>
+__global__ void sgemm_thread_tiling(const float *A, const float *B, float *C, int M, int N, int K)
+{
+    __shared__ float As[BK][BM];
+    __shared__ float Bs[BK][BN];
+
+    int tid = threadIdx.x;
+    int by = blockIdx.y, bx = blockIdx.x;
+
+    // 寄存器
+    float a_frag[TM];
+    float b_frag[TN];
+    float c_frag[TM][TN] = {0.0f};
+
+
+    int warp_id = tid >> 5; // tid / 32
+    int lane_id = tid & 31; // tid % 32
+
+    constexpr int WARP_Y = Wy; // 4
+    constexpr int WARP_X = Wx; // 8
+
+    //寄存器读取SMEM时线程重排，线程块尺寸
+    constexpr int RLDS_C_BLOCK_X = BN / TN;
+    constexpr int RLDS_C_BLOCK_Y = BM / TM;
+
+    // 每一列 LDS_C_BLOCK_Y / WARP_Y 个 warp tile
+    constexpr int warp_tile_per_col = RLDS_C_BLOCK_Y / WARP_Y;
+    // 每一行 LDS_C_BLOCK_X / WARP_X 个 warp tile
+    constexpr int warp_tile_per_row = RLDS_C_BLOCK_X / WARP_X;
+
+    // warp 在 Block 中的位置（4×2 排列）
+    int warp_row = warp_id / warp_tile_per_row; // / 2   M 方向：0~3
+    int warp_col = warp_id % warp_tile_per_row; // % 2   N 方向：0~1
+
+    // lane 在 warp 内的位置（4×8 排列，行主序）
+    int lane_row = lane_id / WARP_X; // M 方向：0~3
+    int lane_col = lane_id % WARP_X; // N 方向：0~7
+
+    //K-Loop
+    for (int bk = 0; bk < K; bk += BK)
+    {
+
+        // 协作加载 A、B 到 Shared Memory
+        load_tile_A<BM, BK, BLOCK_SIZE>(A, As, M, K, by * BM, bk, tid);
+        load_tile_B<BN, BK, BLOCK_SIZE>(B, Bs, K, N, bx * BN, bk, tid);
+
+        __syncthreads();
+
+        // 外积累加
+        for (int k = 0; k < BK; k++) {
+
+            // 从 Shared Memory 加载到寄存器
+
+            //1个线程读取1个float至a_frag
+            //同一warp的32个线程发起1个内存事务，且数据严格连续对齐、无bank conflict
+            a_frag[lane_col] = As[k][warp_row * WARP_Y * TM + lane_row * TM + lane_col];
+
+            // 广播 a_frag
+            // 每个线程遍历各自的a_frag，从同行对应线程的或自身的a_frag中获取数据，使得同行线程的a_frag均存有正确数据且一致
+            #pragma unroll
+            for (int i = 0; i < TM; i++) {
+
+                a_frag[i] = __shfl_sync(0xffffffff, a_frag[i], i, 8);
+            }
+
+
+            // b_frag写入过程
+            // 16个lane各读一个float4：相邻lane连续，无bank conflict
+            float4 b_vec = make_float4(0.f, 0.f, 0.f, 0.f);
+            if (lane_row < 2) {
+                
+                b_vec = CONST_FLOAT4(Bs[k][warp_col * WARP_X * TN + lane_id * 4]);
+            }   
+
+            // 全warp参与、无分歧：0~3来自lane 2*lane_col，4~7来自lane 2*lane_col+1
+            // __shfl_sync()只支持32位或64位的基础标量类型，必须将float4类型数据拆开
+            b_frag[0] = __shfl_sync(0xffffffff, b_vec.x, 2 * lane_col);
+            b_frag[1] = __shfl_sync(0xffffffff, b_vec.y, 2 * lane_col);
+            b_frag[2] = __shfl_sync(0xffffffff, b_vec.z, 2 * lane_col);
+            b_frag[3] = __shfl_sync(0xffffffff, b_vec.w, 2 * lane_col);
+            b_frag[4] = __shfl_sync(0xffffffff, b_vec.x, 2 * lane_col + 1);
+            b_frag[5] = __shfl_sync(0xffffffff, b_vec.y, 2 * lane_col + 1);
+            b_frag[6] = __shfl_sync(0xffffffff, b_vec.z, 2 * lane_col + 1);
+            b_frag[7] = __shfl_sync(0xffffffff, b_vec.w, 2 * lane_col + 1);
+            
+
+            // 寄存器上做外积
+            for (int i = 0; i < TM; i++) {
+                for (int j = 0; j < TN; j++) {
+                    c_frag[i][j] += a_frag[i] * b_frag[j];
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+
+    // 写回全局内存，使用 warp/lane 坐标，与 compute 一致
+    // 一个线程负责一个数据间相邻的8*8部分
+    int base_row = by * BM + warp_row * WARP_Y * TM + lane_row * TM;
+    int base_col = bx * BN + warp_col * WARP_X * TN + lane_col * TN;
+    for (int i = 0; i < TM; i++) {
+
+        int r = base_row + i;
+        if (r >= M) {
+            //M不为8的倍数时，负责余下的不足8行数据的线程同样循环8次，但没有数据的几次循环会执行continue语句跳过
+            continue;
+        }
+
+        if (base_col + TN <= N) {
+            
+            //2条STG.128指令
+            
+            float4 temp = make_float4(c_frag[i][0], c_frag[i][1], c_frag[i][2], c_frag[i][3]);
+            FLOAT4(C[r * N + base_col]) = temp;
+
+            temp = make_float4(c_frag[i][4], c_frag[i][5], c_frag[i][6], c_frag[i][7]);
+            FLOAT4(C[r * N + base_col + 4]) = temp;
+
+        }
+
+        else {
+
+            // N不为8的倍数时，余下的不足8个的float数据逐个传输
+            for (int j = 0; j < N - base_col; ++j) {
+                C[r * N + base_col + j] = c_frag[i][j];
+            }
+
+        }
+
+    }
+}
+
+
 
 总结：
 相邻线程应尽量访问相距较短或相邻的数据
